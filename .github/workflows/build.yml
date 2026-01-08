@@ -277,7 +277,7 @@ jobs:
           path: PitchEditor-Linux.tar.gz
 
   release:
-    needs: [build-windows-cpu, build-windows-dml, build-macos, build-linux]
+    needs: [build-windows-cpu, build-windows-dml, build-linux]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
 
