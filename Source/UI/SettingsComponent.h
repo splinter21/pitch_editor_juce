@@ -50,7 +50,7 @@ private:
     juce::Label infoLabel;
     
     juce::String currentDevice = "CPU";
-    int numThreads = 0;  // 0 = auto (use all cores)
+    int numThreads = 2;  // 0 = auto (use all cores)
     bool dashedOriginalPitchLine = false;
     
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SettingsComponent)

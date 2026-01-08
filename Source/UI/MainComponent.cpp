@@ -1218,7 +1218,7 @@ void MainComponent::applySettings()
                             .getChildFile("settings.xml");
     
     juce::String device = "CPU";
-    int threads = 0;
+    int threads = 2;
     bool dashedOriginalPitchLine = false;
     
     if (settingsFile.existsAsFile())
@@ -1227,7 +1227,7 @@ void MainComponent::applySettings()
         if (xml != nullptr)
         {
             device = xml->getStringAttribute("device", "CPU");
-            threads = xml->getIntAttribute("threads", 0);
+            threads = xml->getIntAttribute("threads", 2);
             dashedOriginalPitchLine = xml->getIntAttribute("dashedOriginalPitchLine", 0) != 0;
         }
     }

@@ -250,7 +250,7 @@ void SettingsComponent::loadSettings()
         if (xml != nullptr)
         {
             currentDevice = xml->getStringAttribute("device", "CPU");
-            numThreads = xml->getIntAttribute("threads", 0);
+            numThreads = xml->getIntAttribute("threads", 2);
             dashedOriginalPitchLine = xml->getIntAttribute("dashedOriginalPitchLine", 0) != 0;
             DBG("Loaded settings: device=" + currentDevice + ", threads=" + juce::String(numThreads));
         }
