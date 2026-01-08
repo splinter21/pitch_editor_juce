@@ -168,6 +168,67 @@ void PianoRollComponent::drawPitchCurves(juce::Graphics& g)
     
     const auto& audioData = project->getAudioData();
     if (audioData.f0.empty()) return;
+
+    auto strokeOriginalPitchPath = [this, &g](const juce::Path& p)
+    {
+        if (p.isEmpty())
+            return;
+
+        const auto stroke = juce::PathStrokeType(1.0f);
+        if (!dashedOriginalPitchLine)
+        {
+            g.strokePath(p, stroke);
+            return;
+        }
+
+        juce::Path dashed;
+        const float dashes[] = { 6.0f, 4.0f };
+        stroke.createDashedStroke(dashed, p, dashes, 2);
+        g.strokePath(dashed, stroke);
+    };
+
+    // Draw original (unmodified) pitch contour from imported audio
+    {
+        const auto& baseF0 = (!audioData.originalF0.empty()) ? audioData.originalF0 : audioData.f0;
+        const auto& baseVoiced = (!audioData.originalVoicedMask.empty()) ? audioData.originalVoicedMask : audioData.voicedMask;
+
+        g.setColour(juce::Colour(COLOR_PITCH_CURVE).withAlpha(0.30f));
+
+        juce::Path path;
+        bool started = false;
+
+        for (size_t i = 0; i < baseF0.size(); ++i)
+        {
+            const float f0 = baseF0[i];
+            const bool voiced = (i < baseVoiced.size()) ? baseVoiced[i] : (f0 > 0.0f);
+
+            if (f0 > 0.0f && voiced)
+            {
+                const float midi = freqToMidi(f0);
+                const float x = framesToSeconds(static_cast<int>(i)) * pixelsPerSecond;
+                const float y = midiToY(midi);
+
+                if (!started)
+                {
+                    path.startNewSubPath(x, y);
+                    started = true;
+                }
+                else
+                {
+                    path.lineTo(x, y);
+                }
+            }
+            else if (started)
+            {
+                strokeOriginalPitchPath(path);
+                path.clear();
+                started = false;
+            }
+        }
+
+        if (started)
+            strokeOriginalPitchPath(path);
+    }
     
     // Get global pitch offset
     float globalOffset = project->getGlobalPitchOffset();
@@ -220,64 +281,6 @@ void PianoRollComponent::drawPitchCurves(juce::Graphics& g)
         {
             g.strokePath(path, juce::PathStrokeType(2.0f));
         }
-    }
-    
-    // Also draw unassigned F0 regions (outside of notes) in a dimmer color
-    g.setColour(juce::Colour(COLOR_PITCH_CURVE).withAlpha(0.3f));
-    juce::Path unassignedPath;
-    bool unassignedStarted = false;
-    
-    for (size_t i = 0; i < audioData.f0.size(); ++i)
-    {
-        // Check if this frame is inside any note
-        bool inNote = false;
-        for (const auto& note : project->getNotes())
-        {
-            if (i >= static_cast<size_t>(note.getStartFrame()) && 
-                i < static_cast<size_t>(note.getEndFrame()))
-            {
-                inNote = true;
-                break;
-            }
-        }
-        
-        if (!inNote)
-        {
-            float f0 = audioData.f0[i];
-            if (f0 > 0.0f && i < audioData.voicedMask.size() && audioData.voicedMask[i])
-            {
-                float midi = freqToMidi(f0);
-                float x = framesToSeconds(static_cast<int>(i)) * pixelsPerSecond;
-                float y = midiToY(midi);
-                
-                if (!unassignedStarted)
-                {
-                    unassignedPath.startNewSubPath(x, y);
-                    unassignedStarted = true;
-                }
-                else
-                {
-                    unassignedPath.lineTo(x, y);
-                }
-            }
-            else if (unassignedStarted)
-            {
-                g.strokePath(unassignedPath, juce::PathStrokeType(1.0f));
-                unassignedPath.clear();
-                unassignedStarted = false;
-            }
-        }
-        else if (unassignedStarted)
-        {
-            g.strokePath(unassignedPath, juce::PathStrokeType(1.0f));
-            unassignedPath.clear();
-            unassignedStarted = false;
-        }
-    }
-    
-    if (unassignedStarted)
-    {
-        g.strokePath(unassignedPath, juce::PathStrokeType(1.0f));
     }
 }
 

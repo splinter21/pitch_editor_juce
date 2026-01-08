@@ -49,6 +49,17 @@ bool Project::saveToFile(const juce::File& file) const
         f0Elem->addTextElement(parts.joinIntoString(" "));
     }
 
+    // OriginalF0 (unmodified pitch from imported audio)
+    if (!audioData.originalF0.empty())
+    {
+        auto* origF0Elem = root.createNewChildElement("OriginalF0");
+        juce::StringArray parts;
+        parts.ensureStorageAllocated(static_cast<int>(audioData.originalF0.size()));
+        for (float v : audioData.originalF0)
+            parts.add(juce::String(v, 6));
+        origF0Elem->addTextElement(parts.joinIntoString(" "));
+    }
+
     // VoicedMask
     auto* voicedElem = root.createNewChildElement("VoicedMask");
     {
@@ -57,6 +68,17 @@ bool Project::saveToFile(const juce::File& file) const
         for (bool b : audioData.voicedMask)
             mask << (b ? '1' : '0');
         voicedElem->addTextElement(mask);
+    }
+
+    // OriginalVoicedMask
+    if (!audioData.originalVoicedMask.empty())
+    {
+        auto* origVoicedElem = root.createNewChildElement("OriginalVoicedMask");
+        juce::String mask;
+        mask.preallocateBytes(static_cast<size_t>(audioData.originalVoicedMask.size()));
+        for (bool b : audioData.originalVoicedMask)
+            mask << (b ? '1' : '0');
+        origVoicedElem->addTextElement(mask);
     }
 
     const bool ok = root.writeTo(file);

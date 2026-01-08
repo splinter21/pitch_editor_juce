@@ -57,6 +57,17 @@ SettingsComponent::SettingsComponent()
     
     threadsValueLabel.setColour(juce::Label::textColourId, juce::Colours::lightgrey);
     addAndMakeVisible(threadsValueLabel);
+
+    // Original pitch line style
+    dashedOriginalPitchLineToggle.setColour(juce::ToggleButton::textColourId, juce::Colours::white);
+    dashedOriginalPitchLineToggle.onClick = [this]()
+    {
+        dashedOriginalPitchLine = dashedOriginalPitchLineToggle.getToggleState();
+        saveSettings();
+        if (onSettingsChanged)
+            onSettingsChanged();
+    };
+    addAndMakeVisible(dashedOriginalPitchLineToggle);
     
     // Info label
     infoLabel.setColour(juce::Label::textColourId, juce::Colour(0xff888888));
@@ -78,8 +89,10 @@ SettingsComponent::SettingsComponent()
     {
         threadsValueLabel.setText(juce::String(numThreads), juce::dontSendNotification);
     }
+
+    dashedOriginalPitchLineToggle.setToggleState(dashedOriginalPitchLine, juce::dontSendNotification);
     
-    setSize(400, 250);
+    setSize(400, 290);
 }
 
 void SettingsComponent::paint(juce::Graphics& g)
@@ -105,7 +118,11 @@ void SettingsComponent::resized()
     threadsLabel.setBounds(threadsRow.removeFromLeft(120));
     threadsValueLabel.setBounds(threadsRow.removeFromRight(100));
     threadsSlider.setBounds(threadsRow.reduced(0, 2));
-    bounds.removeFromTop(20);
+    bounds.removeFromTop(10);
+
+    // Original pitch line toggle
+    dashedOriginalPitchLineToggle.setBounds(bounds.removeFromTop(24));
+    bounds.removeFromTop(16);
     
     // Info label
     infoLabel.setBounds(bounds.removeFromTop(60));
@@ -234,6 +251,7 @@ void SettingsComponent::loadSettings()
         {
             currentDevice = xml->getStringAttribute("device", "CPU");
             numThreads = xml->getIntAttribute("threads", 0);
+            dashedOriginalPitchLine = xml->getIntAttribute("dashedOriginalPitchLine", 0) != 0;
             DBG("Loaded settings: device=" + currentDevice + ", threads=" + juce::String(numThreads));
         }
     }
@@ -260,6 +278,7 @@ void SettingsComponent::saveSettings()
     juce::XmlElement xml("PitchEditorSettings");
     xml.setAttribute("device", currentDevice);
     xml.setAttribute("threads", numThreads);
+    xml.setAttribute("dashedOriginalPitchLine", dashedOriginalPitchLine ? 1 : 0);
     
     xml.writeTo(settingsFile);
 }
@@ -274,7 +293,7 @@ SettingsDialog::SettingsDialog()
     setContentOwned(&settingsComponent, false);
     setUsingNativeTitleBar(true);
     setResizable(false, false);
-    centreWithSize(400, 250);
+    centreWithSize(400, 290);
 }
 
 void SettingsDialog::closeButtonPressed()

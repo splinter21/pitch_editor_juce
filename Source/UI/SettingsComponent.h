@@ -23,6 +23,7 @@ public:
     // Get current settings
     juce::String getSelectedDevice() const { return currentDevice; }
     int getNumThreads() const { return numThreads; }
+    bool getDashedOriginalPitchLine() const { return dashedOriginalPitchLine; }
     
     // Callbacks
     std::function<void()> onSettingsChanged;
@@ -43,11 +44,14 @@ private:
     juce::Label threadsLabel;
     juce::Slider threadsSlider;
     juce::Label threadsValueLabel;
+
+    juce::ToggleButton dashedOriginalPitchLineToggle { "Dashed original pitch line" };
     
     juce::Label infoLabel;
     
     juce::String currentDevice = "CPU";
     int numThreads = 0;  // 0 = auto (use all cores)
+    bool dashedOriginalPitchLine = false;
     
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SettingsComponent)
 };

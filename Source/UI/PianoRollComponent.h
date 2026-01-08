@@ -65,6 +65,9 @@ public:
     // Edit mode
     void setEditMode(EditMode mode);
     EditMode getEditMode() const { return editMode; }
+
+    // View options
+    void setDashedOriginalPitchLine(bool dashed) { dashedOriginalPitchLine = dashed; repaint(); }
     
     // Callbacks
     std::function<void(Note*)> onNoteSelected;
@@ -122,6 +125,8 @@ private:
     std::unordered_map<int, size_t> drawingEditIndexByFrame;
     float lastDrawX = 0.0f;
     float lastDrawY = 0.0f;
+
+    bool dashedOriginalPitchLine = false;
     
     // Scrollbars
     juce::ScrollBar horizontalScrollBar { false };

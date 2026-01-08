@@ -129,6 +129,7 @@ MainComponent::MainComponent(bool enableAudioDevice)
     parameterPanel.onGlobalPitchChanged = [this]() { 
         pianoRoll.repaint();  // Update display
     };
+    parameterPanel.onGlobalPitchPreviewRequested = [this]() { resynthesize(); };
     parameterPanel.setProject(project.get());
     
     DBG("MainComponent: Setting up audio engine callbacks...");
@@ -673,6 +674,10 @@ void MainComponent::analyzeAudio(Project& targetProject, const std::function<voi
         audioData.f0 = std::move(f0Values);
         audioData.voicedMask = std::move(voicedValues);
     }
+
+    // Preserve original (unmodified) pitch contour from imported audio
+    audioData.originalF0 = audioData.f0;
+    audioData.originalVoicedMask = audioData.voicedMask;
     
     onProgress(0.75, "Loading vocoder...");
     // Load vocoder model
@@ -874,11 +879,6 @@ void MainComponent::resynthesize()
             waveform.repaint();
             
             DBG("Resynthesis applied to project");
-            
-            juce::AlertWindow::showMessageBoxAsync(
-                juce::AlertWindow::InfoIcon,
-                "Resynthesize",
-                "Synthesis complete! " + juce::String(synthesizedAudio.size()) + " samples generated.");
                 
             // Clear dirty flags after full resynthesis
             project->clearAllDirty();
@@ -1219,6 +1219,7 @@ void MainComponent::applySettings()
     
     juce::String device = "CPU";
     int threads = 0;
+    bool dashedOriginalPitchLine = false;
     
     if (settingsFile.existsAsFile())
     {
@@ -1227,10 +1228,13 @@ void MainComponent::applySettings()
         {
             device = xml->getStringAttribute("device", "CPU");
             threads = xml->getIntAttribute("threads", 0);
+            dashedOriginalPitchLine = xml->getIntAttribute("dashedOriginalPitchLine", 0) != 0;
         }
     }
     
     DBG("Applying settings: device=" + device + ", threads=" + juce::String(threads));
+
+    pianoRoll.setDashedOriginalPitchLine(dashedOriginalPitchLine);
     
     // Apply to vocoder
     if (vocoder)

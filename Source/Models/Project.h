@@ -4,6 +4,7 @@
 #include "Note.h"
 #include <vector>
 #include <memory>
+#include <cmath>
 
 /**
  * Container for audio data and extracted features.
@@ -17,6 +18,10 @@ struct AudioData
     std::vector<std::vector<float>> melSpectrogram;  // [T, NUM_MELS]
     std::vector<float> f0;                            // [T]
     std::vector<bool> voicedMask;                     // [T]
+
+    // Original (unmodified) pitch extracted from imported audio
+    std::vector<float> originalF0;                     // [T]
+    std::vector<bool> originalVoicedMask;              // [T]
     
     float getDuration() const
     {
@@ -66,7 +71,16 @@ public:
     
     // Global settings
     float getGlobalPitchOffset() const { return globalPitchOffset; }
-    void setGlobalPitchOffset(float offset) { globalPitchOffset = offset; }
+    void setGlobalPitchOffset(float offset)
+    {
+        if (std::abs(globalPitchOffset - offset) < 0.000001f)
+            return;
+        globalPitchOffset = offset;
+        const int frames = audioData.getNumFrames();
+        if (frames > 0)
+            setF0DirtyRange(0, frames);
+        modified = true;
+    }
     
     float getFormantShift() const { return formantShift; }
     void setFormantShift(float shift) { formantShift = shift; }

@@ -34,6 +34,7 @@ public:
     std::function<void()> onParameterChanged;
     std::function<void()> onParameterEditFinished;  // Called when slider drag ends
     std::function<void()> onGlobalPitchChanged;
+    std::function<void()> onGlobalPitchPreviewRequested; // Debounced preview request for global pitch
     
 private:
     void setupSlider(juce::Slider& slider, juce::Label& label, 
@@ -78,6 +79,8 @@ private:
     juce::Label globalSectionLabel { {}, "Global Settings" };
     juce::Slider globalPitchSlider;
     juce::Label globalPitchLabel { {}, "Global Pitch:" };
+
+    int globalPitchPreviewToken = 0;
     
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ParameterPanel)
 };

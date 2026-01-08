@@ -175,6 +175,20 @@ void ParameterPanel::sliderValueChanged(juce::Slider* slider)
         
         if (onGlobalPitchChanged)
             onGlobalPitchChanged();
+
+        // Debounced auto preview: start rendering 0.2s after user stops changing
+        ++globalPitchPreviewToken;
+        const int token = globalPitchPreviewToken;
+        juce::Component::SafePointer<ParameterPanel> safeThis(this);
+        juce::Timer::callAfterDelay(200, [safeThis, token]()
+        {
+            if (safeThis == nullptr)
+                return;
+            if (token != safeThis->globalPitchPreviewToken)
+                return;
+            if (safeThis->onGlobalPitchPreviewRequested)
+                safeThis->onGlobalPitchPreviewRequested();
+        });
     }
 }
 
@@ -183,12 +197,6 @@ void ParameterPanel::sliderDragEnded(juce::Slider* slider)
     if ((slider == &pitchOffsetSlider || slider == &vibratoRateSlider || slider == &vibratoDepthSlider) && selectedNote)
     {
         // Trigger incremental synthesis when slider drag ends
-        if (onParameterEditFinished)
-            onParameterEditFinished();
-    }
-    else if (slider == &globalPitchSlider && project)
-    {
-        // Global pitch changed, need full resynthesis
         if (onParameterEditFinished)
             onParameterEditFinished();
     }
