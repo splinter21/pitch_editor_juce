@@ -60,6 +60,9 @@ void Project::clearAllDirty()
 {
     for (auto& note : notes)
         note.clearDirty();
+    // Also clear F0 dirty range
+    f0DirtyStart = -1;
+    f0DirtyEnd = -1;
 }
 
 bool Project::hasDirtyNotes() const
@@ -72,11 +75,36 @@ bool Project::hasDirtyNotes() const
     return false;
 }
 
+void Project::setF0DirtyRange(int startFrame, int endFrame)
+{
+    if (f0DirtyStart < 0 || startFrame < f0DirtyStart)
+        f0DirtyStart = startFrame;
+    if (f0DirtyEnd < 0 || endFrame > f0DirtyEnd)
+        f0DirtyEnd = endFrame;
+}
+
+void Project::clearF0DirtyRange()
+{
+    f0DirtyStart = -1;
+    f0DirtyEnd = -1;
+}
+
+bool Project::hasF0DirtyRange() const
+{
+    return f0DirtyStart >= 0 && f0DirtyEnd >= 0;
+}
+
+std::pair<int, int> Project::getF0DirtyRange() const
+{
+    return {f0DirtyStart, f0DirtyEnd};
+}
+
 std::pair<int, int> Project::getDirtyFrameRange() const
 {
     int minStart = -1;
     int maxEnd = -1;
     
+    // Check dirty notes
     for (const auto& note : notes)
     {
         if (note.isDirty())
@@ -86,6 +114,18 @@ std::pair<int, int> Project::getDirtyFrameRange() const
             if (maxEnd < 0 || note.getEndFrame() > maxEnd)
                 maxEnd = note.getEndFrame();
         }
+    }
+    
+    // Also include F0 dirty range from Draw mode edits
+    if (f0DirtyStart >= 0)
+    {
+        if (minStart < 0 || f0DirtyStart < minStart)
+            minStart = f0DirtyStart;
+    }
+    if (f0DirtyEnd >= 0)
+    {
+        if (maxEnd < 0 || f0DirtyEnd > maxEnd)
+            maxEnd = f0DirtyEnd;
     }
     
     return {minStart, maxEnd};

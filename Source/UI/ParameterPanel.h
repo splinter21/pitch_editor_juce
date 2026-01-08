@@ -6,7 +6,8 @@
 #include "../Utils/Constants.h"
 
 class ParameterPanel : public juce::Component,
-                       public juce::Slider::Listener
+                       public juce::Slider::Listener,
+                       public juce::Timer
 {
 public:
     ParameterPanel();
@@ -17,13 +18,14 @@ public:
     
     void sliderValueChanged(juce::Slider* slider) override;
     void sliderDragEnded(juce::Slider* slider) override;
+    void timerCallback() override;
     
     void setProject(Project* proj);
     void setSelectedNote(Note* note);
     void updateFromNote();
     void updateGlobalSliders();
     
-    // Loading status
+    // Loading status with progress bar
     void setLoadingStatus(const juce::String& status);
     void clearLoadingStatus();
     
@@ -39,8 +41,11 @@ private:
     Note* selectedNote = nullptr;
     bool isUpdating = false;  // Prevent feedback loops
     
-    // Loading status
+    // Loading status with indeterminate progress
     juce::Label loadingStatusLabel;
+    double progressValue = -1.0;  // -1 for indeterminate - must be before progressBar
+    juce::ProgressBar progressBar { progressValue };
+    bool isLoading = false;
     
     // Note info
     juce::Label noteInfoLabel;

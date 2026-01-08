@@ -101,7 +101,7 @@ void WaveformComponent::mouseDown(const juce::MouseEvent& e)
 {
     if (e.y >= getHeight() - 14) return;  // Clicked on scrollbar
     
-    double time = xToTime(e.x + scrollX);
+    double time = xToTime(static_cast<float>(e.x) + static_cast<float>(scrollX));
     cursorTime = std::max(0.0, time);
     
     if (onSeek)
@@ -114,18 +114,32 @@ void WaveformComponent::mouseWheelMove(const juce::MouseEvent& e, const juce::Mo
 {
     if (e.mods.isCtrlDown())
     {
-        // Zoom
+        // Zoom - center on cursor position
         float zoomFactor = 1.0f + wheel.deltaY * 0.1f;
         float newPps = juce::jlimit(MIN_PIXELS_PER_SECOND, MAX_PIXELS_PER_SECOND,
                                      pixelsPerSecond * zoomFactor);
         
         if (newPps != pixelsPerSecond)
         {
+            // Calculate cursor position relative to view
+            float cursorX = static_cast<float>(cursorTime * pixelsPerSecond);
+            float cursorRelativeX = cursorX - static_cast<float>(scrollX);
+            
+            // Update zoom
             pixelsPerSecond = newPps;
+            
+            // Calculate new scroll position to keep cursor at same relative position
+            float newCursorX = static_cast<float>(cursorTime * newPps);
+            scrollX = static_cast<double>(newCursorX - cursorRelativeX);
+            scrollX = std::max(0.0, scrollX);
+            
             updateScrollBar();
             
             if (onZoomChanged)
                 onZoomChanged(pixelsPerSecond);
+            
+            if (onScrollChanged)
+                onScrollChanged(scrollX);
             
             repaint();
         }
@@ -137,7 +151,7 @@ void WaveformComponent::mouseWheelMove(const juce::MouseEvent& e, const juce::Mo
     }
 }
 
-void WaveformComponent::scrollBarMoved(juce::ScrollBar* scrollBar, double newRangeStart)
+void WaveformComponent::scrollBarMoved(juce::ScrollBar* /*scrollBar*/, double newRangeStart)
 {
     scrollX = newRangeStart;
     

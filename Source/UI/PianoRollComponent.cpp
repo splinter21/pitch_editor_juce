@@ -1,5 +1,6 @@
 #include "PianoRollComponent.h"
 #include <cmath>
+#include <limits>
 
 PianoRollComponent::PianoRollComponent()
 {
@@ -262,7 +263,7 @@ void PianoRollComponent::drawPianoKeys(juce::Graphics& g)
     // Draw each key
     for (int midi = MIN_MIDI_NOTE; midi <= MAX_MIDI_NOTE; ++midi)
     {
-        float y = midiToY(static_cast<float>(midi)) - scrollY;
+        float y = midiToY(static_cast<float>(midi)) - static_cast<float>(scrollY);
         int noteInOctave = midi % 12;
         
         // Check if it's a black key
@@ -317,8 +318,25 @@ void PianoRollComponent::mouseDown(const juce::MouseEvent& e)
 {
     if (!project) return;
     
-    float adjustedX = e.x - pianoKeysWidth + scrollX;
-    float adjustedY = e.y + scrollY;
+    float adjustedX = e.x - pianoKeysWidth + static_cast<float>(scrollX);
+    float adjustedY = e.y + static_cast<float>(scrollY);
+    
+    if (editMode == EditMode::Draw)
+    {
+        // Start drawing
+        isDrawing = true;
+        lastDrawX = 0.0f;
+        lastDrawY = 0.0f;
+        drawingChanges.clear();
+        
+        applyPitchDrawing(adjustedX, adjustedY);
+        
+        if (onPitchEdited)
+            onPitchEdited();
+        
+        repaint();
+        return;
+    }
     
     // Check if clicking on a note
     Note* note = findNoteAt(adjustedX, adjustedY);
@@ -335,7 +353,7 @@ void PianoRollComponent::mouseDown(const juce::MouseEvent& e)
         // Start dragging
         isDragging = true;
         draggedNote = note;
-        dragStartY = e.y;
+        dragStartY = static_cast<float>(e.y);
         originalPitchOffset = note->getPitchOffset();
         
         repaint();
@@ -356,13 +374,35 @@ void PianoRollComponent::mouseDown(const juce::MouseEvent& e)
 
 void PianoRollComponent::mouseDrag(const juce::MouseEvent& e)
 {
+    if (editMode == EditMode::Draw && isDrawing)
+    {
+        float adjustedX = e.x - pianoKeysWidth + static_cast<float>(scrollX);
+        float adjustedY = e.y + static_cast<float>(scrollY);
+        
+        applyPitchDrawing(adjustedX, adjustedY);
+        
+        if (onPitchEdited)
+            onPitchEdited();
+        
+        repaint();
+        return;
+    }
+    
     if (isDragging && draggedNote)
     {
         // Calculate pitch offset from drag
         float deltaY = dragStartY - e.y;
         float deltaSemitones = deltaY / pixelsPerSemitone;
         
-        draggedNote->setPitchOffset(originalPitchOffset + deltaSemitones);
+        float newOffset = originalPitchOffset + deltaSemitones;
+        
+        // Store old offset for undo if just starting drag
+        if (undoManager && std::abs(newOffset - originalPitchOffset) > 0.01f)
+        {
+            // Note: We'll create the undo action in mouseUp
+        }
+        
+        draggedNote->setPitchOffset(newOffset);
         draggedNote->markDirty();  // Mark as dirty for incremental synthesis
         
         if (onPitchEdited)
@@ -374,8 +414,28 @@ void PianoRollComponent::mouseDrag(const juce::MouseEvent& e)
 
 void PianoRollComponent::mouseUp(const juce::MouseEvent& e)
 {
+    juce::ignoreUnused(e);
+    
+    if (editMode == EditMode::Draw && isDrawing)
+    {
+        isDrawing = false;
+        commitPitchDrawing();
+        repaint();
+        return;
+    }
+    
     if (isDragging && draggedNote)
     {
+        float newOffset = draggedNote->getPitchOffset();
+        
+        // Create undo action if offset changed
+        if (undoManager && std::abs(newOffset - originalPitchOffset) > 0.001f)
+        {
+            auto action = std::make_unique<PitchOffsetAction>(
+                draggedNote, originalPitchOffset, newOffset);
+            undoManager->addAction(std::move(action));
+        }
+        
         // Trigger incremental synthesis when pitch edit is finished
         if (onPitchEditFinished)
             onPitchEditFinished();
@@ -387,7 +447,52 @@ void PianoRollComponent::mouseUp(const juce::MouseEvent& e)
 
 void PianoRollComponent::mouseMove(const juce::MouseEvent& e)
 {
+    juce::ignoreUnused(e);
     // Could implement hover effects here
+}
+
+void PianoRollComponent::mouseDoubleClick(const juce::MouseEvent& e)
+{
+    if (!project) return;
+    
+    float adjustedX = e.x - pianoKeysWidth + static_cast<float>(scrollX);
+    float adjustedY = e.y + static_cast<float>(scrollY);
+    
+    // Check if double-clicking on a note
+    Note* note = findNoteAt(adjustedX, adjustedY);
+    
+    if (note)
+    {
+        // Snap pitch offset to nearest semitone
+        float currentOffset = note->getPitchOffset();
+        float snappedOffset = std::round(currentOffset);
+        
+        if (std::abs(snappedOffset - currentOffset) > 0.001f)
+        {
+            // Create undo action
+            if (undoManager && note)
+            {
+                // Store note index for safer undo (in case notes change)
+                auto action = std::make_unique<PitchOffsetAction>(
+                    note, currentOffset, snappedOffset);
+                undoManager->addAction(std::move(action));
+            }
+            
+            if (note) // Double-check before use
+            {
+                note->setPitchOffset(snappedOffset);
+                note->markDirty();
+            }
+            
+            if (onPitchEdited)
+                onPitchEdited();
+            
+            if (onPitchEditFinished)
+                onPitchEditFinished();
+            
+            repaint();
+        }
+    }
 }
 
 void PianoRollComponent::mouseWheelMove(const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel)
@@ -404,8 +509,13 @@ void PianoRollComponent::mouseWheelMove(const juce::MouseEvent& e, const juce::M
         }
         else
         {
-            // Horizontal zoom
-            setPixelsPerSecond(pixelsPerSecond * zoomFactor);
+            // Horizontal zoom - center on cursor position
+            float newPps = pixelsPerSecond * zoomFactor;
+            setPixelsPerSecond(newPps, true);
+            
+            // Notify parent to sync toolbar slider
+            if (onZoomChanged)
+                onZoomChanged(pixelsPerSecond);
         }
     }
     else
@@ -413,7 +523,8 @@ void PianoRollComponent::mouseWheelMove(const juce::MouseEvent& e, const juce::M
         // Scroll
         if (e.mods.isShiftDown())
         {
-            horizontalScrollBar.setCurrentRangeStart(scrollX - wheel.deltaY * 50.0);
+            double newScrollX = scrollX - wheel.deltaY * 50.0;
+            horizontalScrollBar.setCurrentRangeStart(newScrollX);
         }
         else
         {
@@ -427,6 +538,10 @@ void PianoRollComponent::scrollBarMoved(juce::ScrollBar* scrollBar, double newRa
     if (scrollBar == &horizontalScrollBar)
     {
         scrollX = newRangeStart;
+        
+        // Notify scroll changed for synchronization
+        if (onScrollChanged)
+            onScrollChanged(scrollX);
     }
     else if (scrollBar == &verticalScrollBar)
     {
@@ -448,17 +563,65 @@ void PianoRollComponent::setCursorTime(double time)
     repaint();
 }
 
-void PianoRollComponent::setPixelsPerSecond(float pps)
+void PianoRollComponent::setPixelsPerSecond(float pps, bool centerOnCursor)
 {
-    pixelsPerSecond = juce::jlimit(MIN_PIXELS_PER_SECOND, MAX_PIXELS_PER_SECOND, pps);
+    float oldPps = pixelsPerSecond;
+    float newPps = juce::jlimit(MIN_PIXELS_PER_SECOND, MAX_PIXELS_PER_SECOND, pps);
+    
+    if (std::abs(oldPps - newPps) < 0.01f)
+        return;  // No significant change
+    
+    if (centerOnCursor)
+    {
+        // Calculate cursor position relative to view
+        float cursorX = static_cast<float>(cursorTime * oldPps);
+        float cursorRelativeX = cursorX - static_cast<float>(scrollX);
+        
+        // Calculate new scroll position to keep cursor at same relative position
+        float newCursorX = static_cast<float>(cursorTime * newPps);
+        scrollX = static_cast<double>(newCursorX - cursorRelativeX);
+        scrollX = std::max(0.0, scrollX);
+    }
+    
+    pixelsPerSecond = newPps;
     updateScrollBars();
     repaint();
+    
+    // Don't call onZoomChanged here to avoid infinite recursion
+    // The caller is responsible for synchronizing other components
 }
 
 void PianoRollComponent::setPixelsPerSemitone(float pps)
 {
     pixelsPerSemitone = juce::jlimit(MIN_PIXELS_PER_SEMITONE, MAX_PIXELS_PER_SEMITONE, pps);
     updateScrollBars();
+    repaint();
+}
+
+void PianoRollComponent::setScrollX(double x)
+{
+    if (std::abs(scrollX - x) < 0.01)
+        return;  // No significant change
+    
+    scrollX = x;
+    horizontalScrollBar.setCurrentRangeStart(x);
+    
+    // Don't call onScrollChanged here to avoid infinite recursion
+    // The caller is responsible for synchronizing other components
+    
+    repaint();
+}
+
+void PianoRollComponent::setEditMode(EditMode mode)
+{
+    editMode = mode;
+    
+    // Change cursor based on mode
+    if (mode == EditMode::Draw)
+        setMouseCursor(juce::MouseCursor::CrosshairCursor);
+    else
+        setMouseCursor(juce::MouseCursor::NormalCursor);
+    
     repaint();
 }
 
@@ -499,3 +662,99 @@ void PianoRollComponent::updateScrollBars()
         verticalScrollBar.setCurrentRange(scrollY, visibleHeight);
     }
 }
+
+void PianoRollComponent::applyPitchDrawing(float x, float y)
+{
+    if (!project) return;
+    
+    auto& audioData = project->getAudioData();
+    if (audioData.f0.empty()) return;
+    
+    // Convert screen coordinates to time and MIDI
+    double time = xToTime(x);
+    float midi = yToMidi(y);
+    
+    // Convert MIDI to frequency
+    float freq = midiToFreq(midi);
+    
+    // Convert time to frame index
+    int frameIndex = static_cast<int>(secondsToFrames(static_cast<float>(time)));
+    
+    if (frameIndex >= 0 && frameIndex < static_cast<int>(audioData.f0.size()))
+    {
+        // Store the change for undo
+        drawingChanges.push_back({frameIndex, freq});
+        
+        // Apply the change immediately
+        audioData.f0[frameIndex] = freq;
+        if (frameIndex < static_cast<int>(audioData.voicedMask.size()))
+            audioData.voicedMask[frameIndex] = true;
+        
+        // Interpolate between last draw position and current
+        if (lastDrawX > 0 && lastDrawY > 0)
+        {
+            double lastTime = xToTime(lastDrawX);
+            int lastFrame = static_cast<int>(secondsToFrames(static_cast<float>(lastTime)));
+            float lastMidi = yToMidi(lastDrawY);
+            float lastFreq = midiToFreq(lastMidi);
+            
+            // Interpolate intermediate frames
+            int startFrame = std::min(lastFrame, frameIndex);
+            int endFrame = std::max(lastFrame, frameIndex);
+            
+            for (int f = startFrame + 1; f < endFrame; ++f)
+            {
+                if (f >= 0 && f < static_cast<int>(audioData.f0.size()))
+                {
+                    float t = static_cast<float>(f - startFrame) / static_cast<float>(endFrame - startFrame);
+                    float interpFreq = lastFreq * (1.0f - t) + freq * t;
+                    
+                    drawingChanges.push_back({f, interpFreq});
+                    audioData.f0[f] = interpFreq;
+                    if (f < static_cast<int>(audioData.voicedMask.size()))
+                        audioData.voicedMask[f] = true;
+                }
+            }
+        }
+        
+        lastDrawX = x;
+        lastDrawY = y;
+    }
+}
+
+void PianoRollComponent::commitPitchDrawing()
+{
+    if (drawingChanges.empty()) return;
+    
+    // Calculate the dirty frame range from the changes
+    int minFrame = std::numeric_limits<int>::max();
+    int maxFrame = std::numeric_limits<int>::min();
+    for (const auto& change : drawingChanges)
+    {
+        minFrame = std::min(minFrame, change.first);  // first = frameIndex
+        maxFrame = std::max(maxFrame, change.first);
+    }
+    
+    // Set F0 dirty range in project for incremental synthesis
+    if (project && minFrame <= maxFrame)
+    {
+        project->setF0DirtyRange(minFrame, maxFrame);
+    }
+    
+    // Create undo action
+    if (undoManager && project)
+    {
+        auto& audioData = project->getAudioData();
+        auto action = std::make_unique<F0EditAction>(&audioData.f0, drawingChanges);
+        undoManager->addAction(std::move(action));
+    }
+    
+    drawingChanges.clear();
+    lastDrawX = 0.0f;
+    lastDrawY = 0.0f;
+    
+    // Trigger synthesis
+    if (onPitchEditFinished)
+        onPitchEditFinished();
+}
+

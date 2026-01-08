@@ -4,15 +4,19 @@
 
 MainComponent::MainComponent()
 {
+    DBG("MainComponent: Starting initialization...");
     setSize(1400, 900);
     
+    DBG("MainComponent: Creating project and engines...");
     // Initialize components
     project = std::make_unique<Project>();
     audioEngine = std::make_unique<AudioEngine>();
     pitchDetector = std::make_unique<PitchDetector>();
     fcpePitchDetector = std::make_unique<FCPEPitchDetector>();
     vocoder = std::make_unique<Vocoder>();
+    undoManager = std::make_unique<PitchUndoManager>(100);
     
+    DBG("MainComponent: Looking for FCPE model...");
     // Try to load FCPE model
     auto modelsDir = juce::File::getSpecialLocation(juce::File::currentExecutableFile)
                         .getParentDirectory()
@@ -45,15 +49,21 @@ MainComponent::MainComponent()
     // Load vocoder settings
     applySettings();
     
+    DBG("MainComponent: Initializing audio...");
     // Initialize audio
     audioEngine->initializeAudio();
     
+    DBG("MainComponent: Adding child components...");
     // Add child components
     addAndMakeVisible(toolbar);
     addAndMakeVisible(pianoRoll);
     addAndMakeVisible(waveform);
     addAndMakeVisible(parameterPanel);
     
+    // Set undo manager for piano roll
+    pianoRoll.setUndoManager(undoManager.get());
+    
+    DBG("MainComponent: Setting up callbacks...");
     // Setup toolbar callbacks
     toolbar.onOpenFile = [this]() { openFile(); };
     toolbar.onExportFile = [this]() { exportFile(); };
@@ -63,12 +73,15 @@ MainComponent::MainComponent()
     toolbar.onResynthesize = [this]() { resynthesize(); };
     toolbar.onSettings = [this]() { showSettings(); };
     toolbar.onZoomChanged = [this](float pps) { onZoomChanged(pps); };
+    toolbar.onEditModeChanged = [this](EditMode mode) { setEditMode(mode); };
     
     // Setup piano roll callbacks
     pianoRoll.onSeek = [this](double time) { seek(time); };
     pianoRoll.onNoteSelected = [this](Note* note) { onNoteSelected(note); };
     pianoRoll.onPitchEdited = [this]() { onPitchEdited(); };
     pianoRoll.onPitchEditFinished = [this]() { resynthesizeIncremental(); };
+    pianoRoll.onZoomChanged = [this](float pps) { onZoomChanged(pps); };
+    pianoRoll.onScrollChanged = [this](double x) { onPianoRollScrollChanged(x); };
     
     // Setup waveform callbacks
     waveform.onSeek = [this](double time) { seek(time); };
@@ -83,6 +96,7 @@ MainComponent::MainComponent()
     };
     parameterPanel.setProject(project.get());
     
+    DBG("MainComponent: Setting up audio engine callbacks...");
     // Setup audio engine callbacks
     audioEngine->setPositionCallback([this](double position)
     {
@@ -107,15 +121,20 @@ MainComponent::MainComponent()
     pianoRoll.setProject(project.get());
     waveform.setProject(project.get());
     
+    DBG("MainComponent: Adding keyboard listener...");
     // Add keyboard listener
     addKeyListener(this);
     setWantsKeyboardFocus(true);
     
+    DBG("MainComponent: Loading config...");
     // Load config
     loadConfig();
     
+    DBG("MainComponent: Starting timer...");
     // Start timer for UI updates
     startTimerHz(30);
+    
+    DBG("MainComponent: Initialization complete!");
 }
 
 MainComponent::~MainComponent()
@@ -156,6 +175,31 @@ void MainComponent::timerCallback()
 
 bool MainComponent::keyPressed(const juce::KeyPress& key, juce::Component* /*originatingComponent*/)
 {
+    // Ctrl+Z: Undo
+    if (key == juce::KeyPress('z', juce::ModifierKeys::ctrlModifier, 0))
+    {
+        undo();
+        return true;
+    }
+    
+    // Ctrl+Y or Ctrl+Shift+Z: Redo
+    if (key == juce::KeyPress('y', juce::ModifierKeys::ctrlModifier, 0) ||
+        key == juce::KeyPress('z', juce::ModifierKeys::ctrlModifier | juce::ModifierKeys::shiftModifier, 0))
+    {
+        redo();
+        return true;
+    }
+    
+    // D: Toggle draw mode
+    if (key == juce::KeyPress('d') || key == juce::KeyPress('D'))
+    {
+        if (pianoRoll.getEditMode() == EditMode::Draw)
+            setEditMode(EditMode::Select);
+        else
+            setEditMode(EditMode::Draw);
+        return true;
+    }
+    
     // Space bar: toggle play/pause
     if (key == juce::KeyPress::spaceKey)
     {
@@ -166,10 +210,17 @@ bool MainComponent::keyPressed(const juce::KeyPress& key, juce::Component* /*ori
         return true;
     }
     
-    // Escape: stop
+    // Escape: stop (or exit draw mode)
     if (key == juce::KeyPress::escapeKey)
     {
-        stop();
+        if (pianoRoll.getEditMode() == EditMode::Draw)
+        {
+            setEditMode(EditMode::Select);
+        }
+        else
+        {
+            stop();
+        }
         return true;
     }
     
@@ -636,10 +687,10 @@ void MainComponent::resynthesizeIncremental()
     if (audioData.melSpectrogram.empty() || audioData.f0.empty()) return;
     if (!vocoder->isLoaded()) return;
     
-    // Check if there are dirty notes
-    if (!project->hasDirtyNotes())
+    // Check if there are dirty notes or F0 edits
+    if (!project->hasDirtyNotes() && !project->hasF0DirtyRange())
     {
-        DBG("No dirty notes, skipping incremental synthesis");
+        DBG("No dirty notes or F0 edits, skipping incremental synthesis");
         return;
     }
     
@@ -775,14 +826,81 @@ void MainComponent::onPitchEdited()
 
 void MainComponent::onZoomChanged(float pixelsPerSecond)
 {
-    pianoRoll.setPixelsPerSecond(pixelsPerSecond);
+    if (isSyncingZoom) return;
+    
+    isSyncingZoom = true;
+    
+    // Update all components with zoom centered on cursor
+    pianoRoll.setPixelsPerSecond(pixelsPerSecond, true);
     waveform.setPixelsPerSecond(pixelsPerSecond);
+    toolbar.setZoom(pixelsPerSecond);
+    
+    // Sync scroll positions after zoom
+    waveform.setScrollX(pianoRoll.getScrollX());
+    
+    isSyncingZoom = false;
 }
 
 void MainComponent::onScrollChanged(double scrollX)
 {
+    // Called from waveform scroll change
+    if (isSyncingScroll) return;
+    
+    isSyncingScroll = true;
+    pianoRoll.setScrollX(scrollX);
+    isSyncingScroll = false;
+}
+
+void MainComponent::onPianoRollScrollChanged(double scrollX)
+{
+    // Called from piano roll scroll change
+    if (isSyncingScroll) return;
+    
+    isSyncingScroll = true;
     waveform.setScrollX(scrollX);
-    // Piano roll has its own scroll management
+    isSyncingScroll = false;
+}
+
+void MainComponent::undo()
+{
+    if (undoManager && undoManager->canUndo())
+    {
+        undoManager->undo();
+        pianoRoll.repaint();
+        
+        if (project)
+        {
+            // Mark all notes as dirty for resynthesis
+            for (auto& note : project->getNotes())
+                note.markDirty();
+            
+            resynthesizeIncremental();
+        }
+    }
+}
+
+void MainComponent::redo()
+{
+    if (undoManager && undoManager->canRedo())
+    {
+        undoManager->redo();
+        pianoRoll.repaint();
+        
+        if (project)
+        {
+            // Mark all notes as dirty for resynthesis
+            for (auto& note : project->getNotes())
+                note.markDirty();
+            
+            resynthesizeIncremental();
+        }
+    }
+}
+
+void MainComponent::setEditMode(EditMode mode)
+{
+    pianoRoll.setEditMode(mode);
+    toolbar.setEditMode(mode);
 }
 
 void MainComponent::segmentIntoNotes()

@@ -34,8 +34,12 @@ constexpr juce::uint32 COLOR_NOTE_HOVER = 0xFFBB8FCE;
 constexpr juce::uint32 COLOR_PRIMARY = 0xFF3498DB;
 constexpr juce::uint32 COLOR_WAVEFORM = 0xFF2ECC71;
 
-// Note names
-const juce::StringArray NOTE_NAMES = { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };
+// Note names - use inline function to avoid global construction issues
+inline const juce::StringArray& getNoteNames()
+{
+    static const juce::StringArray names = { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };
+    return names;
+}
 
 // Note colors by pitch class
 inline juce::Colour getNoteColor(int midiNote)

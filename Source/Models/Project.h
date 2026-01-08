@@ -85,6 +85,12 @@ public:
     // Check if any notes are dirty
     bool hasDirtyNotes() const;
     
+    // F0 direct edit dirty tracking (for Draw mode)
+    void setF0DirtyRange(int startFrame, int endFrame);
+    void clearF0DirtyRange();
+    bool hasF0DirtyRange() const;
+    std::pair<int, int> getF0DirtyRange() const;
+    
     // Modified state
     bool isModified() const { return modified; }
     void setModified(bool mod) { modified = mod; }
@@ -99,6 +105,10 @@ private:
     float globalPitchOffset = 0.0f;
     float formantShift = 0.0f;
     float volume = 0.0f;  // dB
+    
+    // F0 direct edit dirty range
+    int f0DirtyStart = -1;
+    int f0DirtyEnd = -1;
     
     bool modified = false;
 };

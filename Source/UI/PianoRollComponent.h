@@ -3,6 +3,18 @@
 #include "../JuceHeader.h"
 #include "../Models/Project.h"
 #include "../Utils/Constants.h"
+#include "../Utils/UndoManager.h"
+
+class PitchUndoManager;
+
+/**
+ * Edit mode for the piano roll.
+ */
+enum class EditMode
+{
+    Select,     // Normal selection and dragging
+    Draw        // Pitch drawing mode
+};
 
 /**
  * Piano roll component for displaying and editing notes.
@@ -20,6 +32,7 @@ public:
     void mouseDrag(const juce::MouseEvent& e) override;
     void mouseUp(const juce::MouseEvent& e) override;
     void mouseMove(const juce::MouseEvent& e) override;
+    void mouseDoubleClick(const juce::MouseEvent& e) override;
     void mouseWheelMove(const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel) override;
     
     // ScrollBar::Listener
@@ -29,21 +42,35 @@ public:
     void setProject(Project* proj);
     Project* getProject() const { return project; }
     
+    // Undo Manager
+    void setUndoManager(PitchUndoManager* manager) { undoManager = manager; }
+    PitchUndoManager* getUndoManager() const { return undoManager; }
+    
     // Cursor
     void setCursorTime(double time);
     double getCursorTime() const { return cursorTime; }
     
-    // Zoom
-    void setPixelsPerSecond(float pps);
+    // Zoom with optional center point
+    void setPixelsPerSecond(float pps, bool centerOnCursor = false);
     void setPixelsPerSemitone(float pps);
     float getPixelsPerSecond() const { return pixelsPerSecond; }
     float getPixelsPerSemitone() const { return pixelsPerSemitone; }
+    
+    // Scroll
+    void setScrollX(double x);
+    double getScrollX() const { return scrollX; }
+    
+    // Edit mode
+    void setEditMode(EditMode mode);
+    EditMode getEditMode() const { return editMode; }
     
     // Callbacks
     std::function<void(Note*)> onNoteSelected;
     std::function<void()> onPitchEdited;
     std::function<void()> onPitchEditFinished;  // Called when dragging ends
     std::function<void(double)> onSeek;
+    std::function<void(float)> onZoomChanged;
+    std::function<void(double)> onScrollChanged;
     
 private:
     void drawGrid(juce::Graphics& g);
@@ -51,6 +78,7 @@ private:
     void drawPitchCurves(juce::Graphics& g);
     void drawCursor(juce::Graphics& g);
     void drawPianoKeys(juce::Graphics& g);
+    void drawDrawingCursor(juce::Graphics& g);  // Draw mode indicator
     
     float midiToY(float midiNote) const;
     float yToMidi(float y) const;
@@ -60,7 +88,12 @@ private:
     Note* findNoteAt(float x, float y);
     void updateScrollBars();
     
+    // Pitch drawing helpers
+    void applyPitchDrawing(float x, float y);
+    void commitPitchDrawing();
+    
     Project* project = nullptr;
+    PitchUndoManager* undoManager = nullptr;
     
     float pixelsPerSecond = DEFAULT_PIXELS_PER_SECOND;
     float pixelsPerSemitone = DEFAULT_PIXELS_PER_SEMITONE;
@@ -72,11 +105,20 @@ private:
     // Piano keys area width
     static constexpr int pianoKeysWidth = 60;
     
+    // Edit mode
+    EditMode editMode = EditMode::Select;
+    
     // Dragging state
     bool isDragging = false;
     Note* draggedNote = nullptr;
     float dragStartY = 0.0f;
     float originalPitchOffset = 0.0f;
+    
+    // Pitch drawing state
+    bool isDrawing = false;
+    std::vector<std::pair<int, float>> drawingChanges;  // {frameIndex, newF0}
+    float lastDrawX = 0.0f;
+    float lastDrawY = 0.0f;
     
     // Scrollbars
     juce::ScrollBar horizontalScrollBar { false };

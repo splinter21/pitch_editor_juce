@@ -10,6 +10,12 @@ ParameterPanel::ParameterPanel()
     loadingStatusLabel.setFont(juce::Font(13.0f, juce::Font::bold));
     loadingStatusLabel.setVisible(false);
     
+    // Progress bar
+    addAndMakeVisible(progressBar);
+    progressBar.setColour(juce::ProgressBar::foregroundColourId, juce::Colour(COLOR_PRIMARY));
+    progressBar.setColour(juce::ProgressBar::backgroundColourId, juce::Colour(0xFF2D2D37));
+    progressBar.setVisible(false);
+    
     // Note info
     addAndMakeVisible(noteInfoLabel);
     noteInfoLabel.setColour(juce::Label::textColourId, juce::Colours::white);
@@ -40,6 +46,7 @@ ParameterPanel::ParameterPanel()
 
 ParameterPanel::~ParameterPanel()
 {
+    stopTimer();
 }
 
 void ParameterPanel::setupSlider(juce::Slider& slider, juce::Label& label,
@@ -78,6 +85,7 @@ void ParameterPanel::resized()
     
     // Loading status at top
     loadingStatusLabel.setBounds(bounds.removeFromTop(24));
+    progressBar.setBounds(bounds.removeFromTop(10));
     bounds.removeFromTop(5);
     
     // Note info
@@ -209,15 +217,28 @@ void ParameterPanel::updateGlobalSliders()
     isUpdating = false;
 }
 
+void ParameterPanel::timerCallback()
+{
+    // Timer for animating indeterminate progress bar
+    repaint();
+}
+
 void ParameterPanel::setLoadingStatus(const juce::String& status)
 {
     loadingStatusLabel.setText(status, juce::dontSendNotification);
     loadingStatusLabel.setVisible(true);
+    progressBar.setVisible(true);
+    progressValue = -1.0;  // Indeterminate mode
+    isLoading = true;
+    startTimerHz(30);  // Animate the progress bar
     repaint();
 }
 
 void ParameterPanel::clearLoadingStatus()
 {
     loadingStatusLabel.setVisible(false);
+    progressBar.setVisible(false);
+    isLoading = false;
+    stopTimer();
     repaint();
 }

@@ -1,4 +1,5 @@
 #include "ToolbarComponent.h"
+#include "PianoRollComponent.h"  // For EditMode enum
 
 ToolbarComponent::ToolbarComponent()
 {
@@ -9,6 +10,8 @@ ToolbarComponent::ToolbarComponent()
     addAndMakeVisible(stopButton);
     addAndMakeVisible(resynthButton);
     addAndMakeVisible(settingsButton);
+    addAndMakeVisible(selectModeButton);
+    addAndMakeVisible(drawModeButton);
     
     openButton.addListener(this);
     exportButton.addListener(this);
@@ -16,16 +19,22 @@ ToolbarComponent::ToolbarComponent()
     stopButton.addListener(this);
     resynthButton.addListener(this);
     settingsButton.addListener(this);
+    selectModeButton.addListener(this);
+    drawModeButton.addListener(this);
     
     // Style buttons
     auto buttonColor = juce::Colour(0xFF3D3D47);
     auto textColor = juce::Colours::white;
     
-    for (auto* btn : { &openButton, &exportButton, &playButton, &stopButton, &resynthButton, &settingsButton })
+    for (auto* btn : { &openButton, &exportButton, &playButton, &stopButton, 
+                       &resynthButton, &settingsButton, &selectModeButton, &drawModeButton })
     {
         btn->setColour(juce::TextButton::buttonColourId, buttonColor);
         btn->setColour(juce::TextButton::textColourOffId, textColor);
     }
+    
+    // Highlight select mode as default active
+    selectModeButton.setColour(juce::TextButton::buttonColourId, juce::Colour(COLOR_PRIMARY));
     
     // Time label
     addAndMakeVisible(timeLabel);
@@ -48,6 +57,15 @@ ToolbarComponent::ToolbarComponent()
     
     zoomSlider.setColour(juce::Slider::trackColourId, juce::Colour(0xFF3D3D47));
     zoomSlider.setColour(juce::Slider::thumbColourId, juce::Colour(COLOR_PRIMARY));
+    
+    // Progress bar (hidden by default)
+    addChildComponent(progressBar);
+    addChildComponent(progressLabel);
+    
+    progressLabel.setColour(juce::Label::textColourId, juce::Colours::white);
+    progressLabel.setJustificationType(juce::Justification::centredLeft);
+    progressBar.setColour(juce::ProgressBar::foregroundColourId, juce::Colour(COLOR_PRIMARY));
+    progressBar.setColour(juce::ProgressBar::backgroundColourId, juce::Colour(0xFF2D2D37));
 }
 
 ToolbarComponent::~ToolbarComponent()
@@ -81,6 +99,12 @@ void ToolbarComponent::resized()
     resynthButton.setBounds(bounds.removeFromLeft(80));
     bounds.removeFromLeft(20);
     
+    // Edit mode buttons
+    selectModeButton.setBounds(bounds.removeFromLeft(60));
+    bounds.removeFromLeft(4);
+    drawModeButton.setBounds(bounds.removeFromLeft(60));
+    bounds.removeFromLeft(20);
+    
     // Time display
     timeLabel.setBounds(bounds.removeFromLeft(180));
     bounds.removeFromLeft(20);
@@ -91,6 +115,14 @@ void ToolbarComponent::resized()
     zoomLabel.setBounds(bounds.removeFromRight(50));
     bounds.removeFromRight(4);
     zoomSlider.setBounds(bounds.removeFromRight(150));
+    
+    // Progress bar (centered overlay)
+    if (showingProgress)
+    {
+        auto progressArea = getLocalBounds().reduced(200, 6);
+        progressLabel.setBounds(progressArea.removeFromLeft(100));
+        progressBar.setBounds(progressArea);
+    }
 }
 
 void ToolbarComponent::buttonClicked(juce::Button* button)
@@ -118,6 +150,18 @@ void ToolbarComponent::buttonClicked(juce::Button* button)
         onResynthesize();
     else if (button == &settingsButton && onSettings)
         onSettings();
+    else if (button == &selectModeButton)
+    {
+        setEditMode(EditMode::Select);
+        if (onEditModeChanged)
+            onEditModeChanged(EditMode::Select);
+    }
+    else if (button == &drawModeButton)
+    {
+        setEditMode(EditMode::Draw);
+        if (onEditModeChanged)
+            onEditModeChanged(EditMode::Draw);
+    }
 }
 
 void ToolbarComponent::sliderValueChanged(juce::Slider* slider)
@@ -142,6 +186,52 @@ void ToolbarComponent::setTotalTime(double time)
 {
     totalTime = time;
     updateTimeDisplay();
+}
+
+void ToolbarComponent::setEditMode(EditMode mode)
+{
+    currentEditModeInt = (mode == EditMode::Draw) ? 1 : 0;
+    
+    auto buttonColor = juce::Colour(0xFF3D3D47);
+    auto activeColor = juce::Colour(COLOR_PRIMARY);
+    
+    selectModeButton.setColour(juce::TextButton::buttonColourId, 
+        mode == EditMode::Select ? activeColor : buttonColor);
+    drawModeButton.setColour(juce::TextButton::buttonColourId, 
+        mode == EditMode::Draw ? activeColor : buttonColor);
+    
+    repaint();
+}
+
+void ToolbarComponent::setZoom(float pixelsPerSecond)
+{
+    // Update slider without triggering callback
+    zoomSlider.setValue(pixelsPerSecond, juce::dontSendNotification);
+}
+
+void ToolbarComponent::showProgress(const juce::String& message)
+{
+    showingProgress = true;
+    progressLabel.setText(message, juce::dontSendNotification);
+    progressLabel.setVisible(true);
+    progressBar.setVisible(true);
+    progressValue = -1.0;  // Indeterminate
+    resized();
+}
+
+void ToolbarComponent::hideProgress()
+{
+    showingProgress = false;
+    progressLabel.setVisible(false);
+    progressBar.setVisible(false);
+}
+
+void ToolbarComponent::setProgress(float progress)
+{
+    if (progress < 0)
+        progressValue = -1.0;  // Indeterminate
+    else
+        progressValue = static_cast<double>(juce::jlimit(0.0f, 1.0f, progress));
 }
 
 void ToolbarComponent::updateTimeDisplay()

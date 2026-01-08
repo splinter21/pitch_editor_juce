@@ -6,6 +6,7 @@
 #include "../Audio/PitchDetector.h"
 #include "../Audio/FCPEPitchDetector.h"
 #include "../Audio/Vocoder.h"
+#include "../Utils/UndoManager.h"
 #include "ToolbarComponent.h"
 #include "PianoRollComponent.h"
 #include "WaveformComponent.h"
@@ -44,6 +45,7 @@ private:
     void onPitchEdited();
     void onZoomChanged(float pixelsPerSecond);
     void onScrollChanged(double scrollX);
+    void onPianoRollScrollChanged(double scrollX);
     
     void loadAudioFile(const juce::File& file);
     void analyzeAudio();
@@ -52,11 +54,16 @@ private:
     void loadConfig();
     void saveConfig();
     
+    void undo();
+    void redo();
+    void setEditMode(EditMode mode);
+    
     std::unique_ptr<Project> project;
     std::unique_ptr<AudioEngine> audioEngine;
     std::unique_ptr<PitchDetector> pitchDetector;  // Fallback YIN detector
     std::unique_ptr<FCPEPitchDetector> fcpePitchDetector;  // FCPE neural network detector
     std::unique_ptr<Vocoder> vocoder;
+    std::unique_ptr<PitchUndoManager> undoManager;
     
     bool useFCPE = true;  // Use FCPE by default if available
     
@@ -74,6 +81,10 @@ private:
     bool hasOriginalWaveform = false;
     
     bool isPlaying = false;
+    
+    // Sync flags to prevent infinite loops
+    bool isSyncingScroll = false;
+    bool isSyncingZoom = false;
     
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MainComponent)
 };
