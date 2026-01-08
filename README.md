@@ -1,15 +1,16 @@
-<center>
-<h1>大市修 - PC NSF HifiGAN Pitch Editor</h1>
+<div style="text-align: center;">
+  <h1> ♥ 大市修 ♥ <br/> PC-NSF-HifiGAN Pitch Editor </h1>
 
-<img src="logo.jpg" alt="Logo" width="300" />
+  <img src="logo.jpg" alt="Logo" width="300" />
 
-<em>
-大市修于市，音符修于心
-</em>
+  <p>
+    <em>大市修于市，音符修于心</em>
+  </p>
 
-<small>A lightweight pitch editor inspired by Melodyne, built with the JUCE framework for PC-NSF-HiFiGAN vocoder integration.</small>
-
-</center>
+  <p>
+    <small>A lightweight pitch editor inspired by Melodyne, built with the JUCE framework for PC-NSF-HiFiGAN vocoder integration.</small>
+  </p>
+</div>
 
 ## Features
 
